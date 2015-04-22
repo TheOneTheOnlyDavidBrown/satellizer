@@ -110,6 +110,10 @@
     })
     .provider('$auth', ['satellizer.config', function(config) {
       Object.defineProperties(this, {
+        baseUrl: {
+          get: function() { return config.baseUrl; },
+          set: function(value) { config.baseUrl = value; }
+        },
         httpInterceptor: {
           get: function() { return config.httpInterceptor; },
           set: function(value) { config.httpInterceptor = value; }
@@ -270,14 +274,13 @@
       'satellizer.storage',
       function($q, $window, $location, config, storage) {
         var shared = {};
+        var tokenName = config.tokenPrefix ? config.tokenPrefix + '_' + config.tokenName : config.tokenName;
 
         shared.getToken = function() {
-          var tokenName = config.tokenPrefix ? config.tokenPrefix + '_' + config.tokenName : config.tokenName;
           return storage.get(tokenName);
         };
 
         shared.getPayload = function() {
-          var tokenName = config.tokenPrefix ? config.tokenPrefix + '_' + config.tokenName : config.tokenName;
           var token = storage.get(tokenName);
 
           if (token && token.split('.').length === 3) {
@@ -304,11 +307,9 @@
               response.data[config.tokenRoot][config.tokenName] : response.data[config.tokenName];
           }
 
-          var tokenName = config.tokenPrefix ? config.tokenPrefix + '_' + config.tokenName : config.tokenName;
-
           if (!token) {
-            tokenName = config.tokenRoot ? config.tokenRoot + '.' + config.tokenName : config.tokenName;
-            throw new Error('Expecting a token named "' + tokenName + '" but instead got: ' + JSON.stringify(response.data));
+            var tokenPath = config.tokenRoot ? config.tokenRoot + '.' + config.tokenName : config.tokenName;
+            throw new Error('Expecting a token named "' + tokenPath + '" but instead got: ' + JSON.stringify(response.data));
           }
 
           storage.set(tokenName, token);
@@ -321,12 +322,10 @@
         };
 
         shared.removeToken = function() {
-          var tokenName = config.tokenPrefix ? config.tokenPrefix + '_' + config.tokenName : config.tokenName;
           storage.remove(tokenName);
         };
 
         shared.isAuthenticated = function() {
-          var tokenName = config.tokenPrefix ? config.tokenPrefix + '_' + config.tokenName : config.tokenName;
           var token = storage.get(tokenName);
 
           if (token) {
@@ -344,7 +343,6 @@
         };
 
         shared.logout = function(redirect) {
-          var tokenName = config.tokenPrefix ? config.tokenPrefix + '_' + config.tokenName : config.tokenName;
           storage.remove(tokenName);
 
           if (config.logoutRedirect && !redirect) {
@@ -786,15 +784,18 @@
       function($q, config, storage) {
         var tokenName = config.tokenPrefix ? config.tokenPrefix + '_' + config.tokenName : config.tokenName;
         return {
-          request: function(httpConfig) {
+          request: function(request) {
+            if (request.url.substr(request.url.length - 5) == '.html') {
+              return request;
+            }
             var token = storage.get(tokenName);
             if (token && config.httpInterceptor) {
               if (config.authHeader && config.authToken) {
                 token = config.authToken + ' ' + token;
               }
-              httpConfig.headers[config.authHeader] = token;
+              request.headers[config.authHeader] = token;
             }
-            return httpConfig;
+            return request;
           },
           responseError: function(response) {
             return $q.reject(response);
